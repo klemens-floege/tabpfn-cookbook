@@ -197,7 +197,7 @@ def capture(reg: TabPFNRegressor, candidates: torch.Tensor) -> list[Forward]:
         calls.append(Forward(model, inputs[0].clone(), inputs[1].clone(), dict(kwargs)))
 
     handles = [
-        cache.get(torch.device("cuda")).register_forward_hook(record, with_kwargs=True)
+        cache.get(reg.devices_[0]).register_forward_hook(record, with_kwargs=True)
         for cache in reg.executor_.model_caches
     ]
     try:
