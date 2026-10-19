@@ -1,0 +1,40 @@
+name: bo-batching-l4
+
+resources:
+  accelerators: {L4: 1}
+  use_spot: true
+  cpus: 4
+  memory: 16
+  disk_size: 50
+
+file_mounts:
+  /tmp/bo-benchmark/benchmark_bo_batching.py: /home/klemens_priorlabs_ai/bo_screen_exp/batching_ablation_20261018/benchmark_bo_batching.py
+  /tmp/bo-benchmark/tabpfn_extensions: /home/klemens_priorlabs_ai/bo_screen_exp/tabpfn-extensions/src/tabpfn_extensions
+  /tmp/bo-benchmark/model.safetensors: /home/klemens_priorlabs_ai/.cache/tabpfn/tabpfn-v3.5-20260909.safetensors
+
+envs:
+  OMP_NUM_THREADS: "2"
+  MKL_NUM_THREADS: "2"
+  TORCHINDUCTOR_COMPILE_THREADS: "2"
+  TABPFN_NO_BROWSER: "1"
+  PYTHONUNBUFFERED: "1"
+  BO_RESULTS_URI: gs://p2or-sky-cache-eu-dev/klemens/bo-batching-20261019
+
+setup: |
+  timeout 10m python3 -m pip install uv
+
+run: |
+  set -euo pipefail
+  cd /tmp/bo-benchmark
+  export CLOUDSDK_CONFIG="$(mktemp -d)"
+  upload_results() {
+    gcloud storage cp results.jsonl "$BO_RESULTS_URI/results.jsonl"
+    gcloud storage cp benchmark_bo_batching.py "$BO_RESULTS_URI/benchmark_bo_batching.py"
+    gcloud storage ls "$BO_RESULTS_URI/results.jsonl"
+  }
+  trap upload_results EXIT
+  nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+  timeout --kill-after=30s 45m uv run -q --no-project --python 3.12 \
+    --with 'tabpfn==9.2.0' --with 'tabpfn-extensions[bayesian_optimization]' \
+    python benchmark_bo_batching.py --checkpoint /tmp/bo-benchmark/model.safetensors \
+    | tee results.jsonl
